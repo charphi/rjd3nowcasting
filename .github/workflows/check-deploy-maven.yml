@@ -1,0 +1,88 @@
+name: Check and deploy with Maven
+
+on: [ push, pull_request ]
+
+jobs:
+  check-job:
+    if: github.event_name == 'pull_request' || startsWith(github.ref, 'refs/heads/develop') || startsWith(github.ref, 'refs/tags/v')
+
+    name: Check develop branch and pull requests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout source code
+        uses: actions/checkout@v4
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: 21
+          cache: 'maven'
+
+      - name: Check with Maven
+        run: mvn -B -ntp -P check-files
+
+  deploy-snapshot-job:
+    needs: check-job
+    if: startsWith(github.repository, 'rjdemetra/') && startsWith(github.ref, 'refs/heads/develop')
+
+    name: Deploy snapshot on develop branch
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout source code
+        uses: actions/checkout@v4
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: 21
+          cache: 'maven'
+
+      - name: Dryrun release assets with Maven
+        run: mvn -B -ntp -P deploy-assets -Djreleaser.dry.run
+        env:
+          JRELEASER_GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload JReleaser output
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: assets-snapshot-log
+          path: |
+            jreleaser/trace.log
+            jreleaser/output.properties
+
+  deploy-release-job:
+    needs: check-job
+    if: startsWith(github.repository, 'rjdemetra/') && startsWith(github.ref, 'refs/tags/v')
+
+    name: Deploy release on tag
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout source code
+        uses: actions/checkout@v4
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: 21
+          cache: 'maven'
+
+      - name: Release assets with Maven
+        run: mvn -B -ntp -P deploy-assets
+        env:
+          JRELEASER_GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload JReleaser output
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: assets-release-log
+          path: |
+            jreleaser/trace.log
+            jreleaser/output.properties
